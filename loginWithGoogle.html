@@ -1,0 +1,208 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+    <title>Google Login</title>
+
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        font-family: Arial, sans-serif;
+        background: #f3f4f6;
+      }
+
+      main {
+        min-height: 100vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 30px;
+      }
+
+      .login-container {
+        width: 100%;
+        max-width: 500px;
+        background: white;
+        padding: 40px;
+        border-radius: 16px;
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.08);
+
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 25px;
+      }
+
+      h1 {
+        margin: 0;
+        color: #1f2937;
+        font-size: 32px;
+      }
+
+      .message {
+        min-height: 25px;
+        text-align: center;
+        font-size: 15px;
+      }
+
+      .success {
+        color: #16a34a;
+      }
+
+      .error {
+        color: #dc2626;
+      }
+
+      #google-signin-container {
+        width: 100%;
+        display: flex;
+        justify-content: center;
+        min-height: 50px;
+      }
+    </style>
+
+    <!-- Google Identity Services -->
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
+  </head>
+
+  <body>
+    <main>
+      <div class="login-container">
+        <h1>LOGIN</h1>
+        <div id="google-signin-container"></div>
+        <div id="message" class="message"></div>
+      </div>
+    </main>
+
+    <script>
+      const GOOGLE_CLIENT_ID =
+        '263938724833-kohplhf4k58ug45iodap8cu1644ovsen.apps.googleusercontent.com';
+
+      const API_URL = 'http://127.0.0.1:3000/auth/login/google';
+
+      function showMessage(message, type) {
+        const messageElement = document.getElementById('message');
+
+        messageElement.textContent = message;
+        messageElement.className = 'message ' + type;
+      }
+
+      async function handleGoogleLogin(response) {
+        const idToken = response.credential;
+
+        console.log('Google ID Token:', idToken);
+
+        if (!idToken) {
+          showMessage('لم يتم الحصول على Token من Google', 'error');
+          return;
+        }
+
+        showMessage('تم الحصول على Token من جوجل، جاري التحقق...', '');
+
+        try {
+          const result = await sendTokenToBackend(idToken);
+          console.log('استجابة الباك اند:', result);
+          showMessage('تم تسجيل الدخول بنجاح!', 'success');
+          alert('✅ تم تسجيل الدخول بنجاح!');
+        } catch (error) {
+          console.error('Backend Error:', error);
+          showMessage('فشل التحقق من الحساب في الباك اند', 'error');
+          alert('❌ فشل التحقق من الحساب في الباك اند');
+        }
+      }
+
+      async function sendTokenToBackend(idToken) {
+        const response = await fetch(API_URL, {
+          method: 'POST',
+
+          headers: {
+            'Content-Type': 'application/json',
+          },
+
+          body: JSON.stringify({
+            idToken: idToken,
+          }),
+        });
+
+        if (!response.ok) {
+          let errorData = null;
+
+          try {
+            errorData = await response.json();
+          } catch (e) {}
+
+          console.error('Backend Error:', errorData);
+          throw new Error('Backend verification failed');
+        }
+
+        const data = await response.json();
+        return data.data;
+      }
+
+      function initializeGoogleSignIn() {
+        console.log('🔄 جاري تهيئة Google Sign-In...');
+        console.log('📌 Client ID:', GOOGLE_CLIENT_ID);
+
+        if (!GOOGLE_CLIENT_ID || GOOGLE_CLIENT_ID === 'client_id') {
+          showMessage('⚠️ يرجى إدخال Client ID صحيح في الكود', 'error');
+          console.error('❌ لم يتم تعيين Google Client ID');
+          return;
+        }
+
+        if (typeof google === 'undefined') {
+          showMessage('⏳ جاري تحميل مكتبة Google...', '');
+          console.log('⏳ مكتبة Google لم تتحمّل بعد، جاري الانتظار...');
+          setTimeout(initializeGoogleSignIn, 1000);
+          return;
+        }
+
+        try {
+          console.log('✅ تم تحميل مكتبة Google');
+
+          google.accounts.id.initialize({
+            client_id: GOOGLE_CLIENT_ID,
+            callback: handleGoogleLogin,
+            auto_prompt: false,
+          });
+
+          const container = document.getElementById('google-signin-container');
+
+          google.accounts.id.renderButton(container, {
+            type: 'standard',
+            size: 'large',
+            theme: 'filled_blue',
+            text: 'signin_with',
+            shape: 'pill',
+            width: 300,
+            logo_alignment: 'left',
+          });
+
+          console.log('✅ تم تهيئة Google Sign-In بنجاح');
+          showMessage('', '');
+        } catch (error) {
+          console.error('❌ خطأ في تهيئة Google Sign-In:', error);
+          showMessage('❌ حدث خطأ في تهيئة تسجيل الدخول', 'error');
+        }
+      }
+
+      document.addEventListener('DOMContentLoaded', function () {
+        console.log('📄 تم تحميل الصفحة');
+        setTimeout(initializeGoogleSignIn, 500);
+      });
+
+      window.onerror = function (msg, url, line, col, error) {
+        console.error('❌ خطأ عام:', msg);
+        if (msg.includes('google')) {
+          showMessage('⏳ جاري تحميل مكتبة Google، انتظر قليلاً...', '');
+          setTimeout(initializeGoogleSignIn, 2000);
+        }
+      };
+    </script>
+  </body>
+</html>
