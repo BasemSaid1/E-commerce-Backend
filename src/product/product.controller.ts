@@ -1,91 +1,3 @@
-// import {
-//   Controller,
-//   Get,
-//   Post,
-//   Body,
-//   Patch,
-//   Param,
-//   Delete,
-//   UseGuards,
-//   UseInterceptors,
-//   Req,
-//   UploadedFiles,
-//   UploadedFile,
-//   BadRequestException,
-// } from '@nestjs/common';
-// import { ProductService } from './product.service.js';
-// import { CreateProductDto } from './dto/create-product.dto.js';
-// import { UpdateProductDto } from './dto/update-product.dto.js';
-// import { AuthGuard } from '../common/guards/auth.guard.js';
-// import { RoleGuard } from '../common/guards/role.guard.js';
-// import { FileInterceptor, FilesInterceptor } from '@nestjs/platform-express';
-// import { multerOptions } from '../common/utils/multer.util.js';
-// import { Roles } from '../common/decorators/roles.decorator.js';
-// import { RoleEnum } from '../common/enums/user.enum.js';
-// import type { Request } from 'express';
-// import { Types } from 'mongoose';
-
-// @Controller('product')
-// export class ProductController {
-//   constructor(private readonly productService: ProductService) {}
-
-//   @Post()
-//   @UseGuards(AuthGuard, RoleGuard)
-//   @UseInterceptors(FileInterceptor('file', multerOptions))
-//   @UseInterceptors(FilesInterceptor('files', 10, multerOptions))
-//   @Roles(RoleEnum.ADMIN)
-//   create(
-//     @Body() createProductDto: CreateProductDto,
-//     @Req() req: Request,
-//     @UploadedFile() file: Express.Multer.File,
-//     @UploadedFiles() files: Express.Multer.File[],
-//   ) {
-//     if (!file) throw new BadRequestException('product image is required');
-
-//     const imageUrl = `http://127.0.0.1:3000/${file.path.replace(/\\/g, '/')}`;
-
-//     if (!files) throw new BadRequestException('product images is required');
-
-//     const imagesUrl: string[] = files.map(
-//       (f) => `http://127.0.0.1:3000/${f.path.replace(/\\/g, '/')}`,
-//     );
-
-//     const adminId = req.user?._id as unknown as Types.ObjectId;
-//     return this.productService.create(
-//       createProductDto,
-//       imageUrl,
-//       imagesUrl,
-//       adminId,
-//     );
-//   }
-
-//   @Get()
-//   findAll() {
-//     return this.productService.findAll();
-//   }
-
-//   @Get(':id')
-//   findOne(@Param('id') id: Types.ObjectId) {
-//     return this.productService.findOne(id);
-//   }
-
-//   @Patch(':id')
-//   @UseGuards(AuthGuard, RoleGuard)
-//   @UseInterceptors(FileInterceptor('file', multerOptions))
-//   @UseInterceptors(FilesInterceptor('files', 10, multerOptions))
-//   @Roles(RoleEnum.ADMIN)
-//   update(@Param('id') id: string, @Body() updateProductDto: UpdateProductDto) {
-//     return this.productService.update(+id, updateProductDto);
-//   }
-
-//   @Delete(':id')
-//   @UseGuards(AuthGuard, RoleGuard)
-//   @Roles(RoleEnum.ADMIN)
-//   remove(@Param('id') id: string) {
-//     return this.productService.remove(+id);
-//   }
-// }
-
 import {
   Controller,
   Get,
@@ -99,11 +11,13 @@ import {
   Req,
   UploadedFiles,
   BadRequestException,
+  Query,
 } from '@nestjs/common';
 
 import { ProductService } from './product.service.js';
 import { CreateProductDto } from './dto/create-product.dto.js';
 import { UpdateProductDto } from './dto/update-product.dto.js';
+import { ProductQueryDto } from './dto/product-query.dto.js';
 import { AuthGuard } from '../common/guards/auth.guard.js';
 import { RoleGuard } from '../common/guards/role.guard.js';
 import { FileFieldsInterceptor } from '@nestjs/platform-express';
@@ -183,8 +97,8 @@ export class ProductController {
 
   @Get()
   @UseInterceptors(CacheInterceptor)
-  findAll() {
-    return this.productService.findAll();
+  findAll(@Query() query: ProductQueryDto) {
+    return this.productService.findAll(query);
   }
 
   @Get(':id')

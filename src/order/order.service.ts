@@ -154,66 +154,6 @@ export class OrderService {
     return Order;
   }
 
-  // async createCheckoutSession(
-  //   orderId: Types.ObjectId,
-  //   userId: Types.ObjectId,
-  // ): Promise<Stripe.Response<Stripe.Checkout.Session>> {
-  //   const order = await this._orderModel
-  //     .findOne({
-  //       _id: orderId,
-  //       user: userId,
-  //       status: OrderStatusEnum.PENDING,
-  //       paymentMethod: PaymentMethodEnum.CARD,
-  //     })
-  //     .populate([
-  //       { path: 'user' },
-  //       { path: 'items.product' },
-  //       { path: 'appliedCoupon' },
-  //     ]);
-
-  //   if (!order) {
-  //     throw new NotFoundException('Order Not Found');
-  //   }
-
-  //   const amount = order.finalTotal ?? order.subTotal ?? 0;
-
-  //   const line_items = [
-  //     {
-  //       price_data: {
-  //         currency: 'egp',
-  //         product_data: {
-  //           name: `Order ${(order.user as unknown as HUserDocument).firstName}`,
-  //           description: `payment for order on address ${order.shippingAddress}`,
-  //         },
-  //         unit_amount: Math.round(amount * 100),
-  //       },
-  //       quantity: 1,
-  //     },
-  //   ];
-
-  //   let discounts: Stripe.Checkout.SessionCreateParams.Discount[] = [];
-
-  //   if (order.discountAmount) {
-  //     const coupon = await this.paymentService.createCoupon({
-  //       duration: 'once',
-  //       currency: 'egp',
-  //       // percent_off: order.discountAmount,
-  //       percent_off: Math.round(order.discountAmount * 100),
-  //     });
-  //     discounts.push({ coupon: coupon.id });
-  //   }
-
-  //   const session = await this.paymentService.checkoutSession({
-  //     customer_email: (order.user as unknown as HUserDocument).email,
-  //     line_items: line_items,
-  //     mode: 'payment',
-  //     discounts,
-  //     metadata: { orderId: orderId.toString() },
-  //   });
-
-  //   return session;
-  // }
-
   async createCheckoutSession(
     orderId: Types.ObjectId,
     userId: Types.ObjectId,

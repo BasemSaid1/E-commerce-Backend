@@ -4,7 +4,6 @@ import { CreateOrderDto } from './dto/create-order.dto.js';
 import type { Request } from 'express';
 import { Types } from 'mongoose';
 import { AuthGuard } from '../common/guards/auth.guard.js';
-import type { HUserDocument } from '../DB/models/user.model.js';
 import Stripe from 'stripe';
 
 @Controller('order')
@@ -32,16 +31,6 @@ export class OrderController {
 
     return session;
   }
-
-  // @Post('refund/:orderId')
-  // async refundOrder(
-  //   @Param('orderId') orderId: Types.ObjectId,
-  //   @Req() req: Request,
-  // ): Promise<Stripe.Response<Stripe.Checkout.Session>> {
-  //   const userId = req.user?._id as unknown as Types.ObjectId;
-  //   const refund = await this.orderService.refundOrder(orderId, userId);
-  //   return refund;
-  // }
 
   @Post('refund/:orderId')
   async refundOrder(

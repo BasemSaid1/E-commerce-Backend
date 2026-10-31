@@ -37,7 +37,7 @@ export class CreateAuthDto {
     message: 'provided value is not gender',
   })
   @IsOptional()
-  dender?: GenderEnum;
+  gender?: GenderEnum;
 
   @IsEnum(RoleEnum, {
     message: 'provided value is not Role',

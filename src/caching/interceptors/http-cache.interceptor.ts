@@ -3,17 +3,22 @@ import {
   NestInterceptor,
   ExecutionContext,
   CallHandler,
+  Logger,
 } from '@nestjs/common';
-import { log } from 'console';
-import { of } from 'rxjs';
-import { map, tap } from 'rxjs/operators';
+import { Observable, of } from 'rxjs';
+import { tap } from 'rxjs/operators';
 import { CachingService } from '../caching.service.js';
 
 @Injectable()
 export class CacheInterceptor implements NestInterceptor {
+  private readonly logger = new Logger(CacheInterceptor.name);
+
   constructor(private readonly redisService: CachingService) {}
 
-  async intercept(context: ExecutionContext, next: CallHandler) {
+  async intercept(
+    context: ExecutionContext,
+    next: CallHandler,
+  ): Promise<Observable<any>> {
     const request = context.switchToHttp().getRequest();
 
     if (request.method !== 'GET') return next.handle();
@@ -26,19 +31,19 @@ export class CacheInterceptor implements NestInterceptor {
         return of(JSON.parse(cachedData));
       }
     } catch (error) {
-      console.error('Error retrieving data from Redis:', error);
+      this.logger.error('Error retrieving data from Redis', error);
     }
 
     return next.handle().pipe(
-      map(async (data) => {
-        try {
-          if (data) {
-            await this.redisService.set(cacheKey, JSON.stringify(data), 360);
-          }
-        } catch (error) {
-          console.error('Error storing data in Redis:', error);
-        }
-        return data;
+      tap((data) => {
+        if (data === undefined || data === null) return;
+
+        // fire-and-forget: مش بنستنى Redis قبل ما نرد على الـ client
+        this.redisService
+          .set(cacheKey, JSON.stringify(data), 360)
+          .catch((error) =>
+            this.logger.error('Error storing data in Redis', error),
+          );
       }),
     );
   }

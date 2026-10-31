@@ -5,6 +5,7 @@ import {
 } from '@nestjs/common';
 import { CreateProductDto } from './dto/create-product.dto.js';
 import { UpdateProductDto } from './dto/update-product.dto.js';
+import { ProductQueryDto } from './dto/product-query.dto.js';
 import { Model, Types } from 'mongoose';
 import { InjectModel } from '@nestjs/mongoose';
 import { HProductDocument, Product } from '../DB/models/product.model.js';
@@ -59,10 +60,118 @@ export class ProductService {
     );
   }
 
-  async findAll(): Promise<HProductDocument[]> {
-    return await this._productModel
-      .find()
-      .populate('brand category createdBy', '-password');
+  async findAll(query: ProductQueryDto) {
+    const {
+      search,
+      category,
+      brand,
+      minPrice,
+      maxPrice,
+      inStock,
+      sort = 'newest',
+      page = 1,
+      limit = 20,
+    } = query;
+
+    const filter: Record<string, any> = {};
+
+    // Search
+    if (search) {
+      filter.$or = [
+        {
+          title: {
+            $regex: search,
+            $options: 'i',
+          },
+        },
+        {
+          description: {
+            $regex: search,
+            $options: 'i',
+          },
+        },
+      ];
+    }
+
+    // Category filter
+    if (category) {
+      filter.category = new Types.ObjectId(category);
+    }
+
+    // Brand filter
+    if (brand) {
+      filter.brand = new Types.ObjectId(brand);
+    }
+
+    // Price filter
+    if (minPrice !== undefined || maxPrice !== undefined) {
+      filter.price = {};
+
+      if (minPrice !== undefined) {
+        filter.price.$gte = minPrice;
+      }
+
+      if (maxPrice !== undefined) {
+        filter.price.$lte = maxPrice;
+      }
+    }
+
+    // Stock filter
+    if (inStock !== undefined) {
+      if (inStock) {
+        filter.stock = { $gt: 0 };
+      } else {
+        filter.stock = { $eq: 0 };
+      }
+    }
+
+    // Sorting
+    let sortOption: Record<string, 1 | -1>;
+
+    switch (sort) {
+      case 'price_asc':
+        sortOption = { price: 1 };
+        break;
+
+      case 'price_desc':
+        sortOption = { price: -1 };
+        break;
+
+      case 'oldest':
+        sortOption = { createdAt: 1 };
+        break;
+
+      case 'newest':
+      default:
+        sortOption = { createdAt: -1 };
+        break;
+    }
+
+    // Pagination
+    const skip = (page - 1) * limit;
+
+    const [products, total] = await Promise.all([
+      this._productModel
+        .find(filter)
+        .populate('brand category createdBy', '-password')
+        .sort(sortOption)
+        .skip(skip)
+        .limit(limit),
+
+      this._productModel.countDocuments(filter),
+    ]);
+
+    return {
+      products,
+      pagination: {
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit),
+        hasNextPage: page * limit < total,
+        hasPreviousPage: page > 1,
+      },
+    };
   }
 
   async findOne(id: Types.ObjectId): Promise<HProductDocument> {

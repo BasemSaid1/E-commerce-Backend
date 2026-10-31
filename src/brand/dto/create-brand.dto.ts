@@ -1,5 +1,6 @@
 import { Transform } from 'class-transformer';
 import {
+  ArrayNotEmpty,
   IsArray,
   IsMongoId,
   IsNotEmpty,
@@ -17,20 +18,23 @@ export class CreateBrandDto {
   name: string;
 
   @Transform(({ value }) => {
-    if (typeof value === 'string') {
-      try {
-        return JSON.parse(value);
-      } catch {
-        return value;
-      }
+    if (Array.isArray(value)) return value;
+    if (typeof value !== 'string') return value;
+    try {
+      const parsed = JSON.parse(value);
+      return Array.isArray(parsed) ? parsed : [parsed];
+    } catch {
+      return value
+        .split(',')
+        .map((v) => v.trim())
+        .filter(Boolean);
     }
-    return value;
   })
   @IsArray({ message: 'categories must be as an array' })
+  @ArrayNotEmpty({ message: 'at least one category ID must exist' })
   @IsMongoId({
     each: true,
     message: 'Each category ID must be a valid mongodb objectId',
   })
-  @IsNotEmpty({ message: 'at least one category ID must be exists' })
-  categories: [string];
+  categories: string[];
 }
