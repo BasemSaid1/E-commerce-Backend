@@ -149,7 +149,9 @@ export class AuthService {
     };
   }
 
-  async login(loginDto: LoginDto): Promise<{ message: string; token: string }> {
+  async login(
+    loginDto: LoginDto,
+  ): Promise<{ message: string; token: string; role: string }> {
     const { email, password } = loginDto;
     const user = await this._userModel.findOne({
       email,
@@ -165,7 +167,7 @@ export class AuthService {
 
     const token = await this._tokenService.generateToken(user._id, user.role);
 
-    return { message: 'Done', token };
+    return { message: 'Done', token, role: user.role };
   }
 
   async saveProfilePic(
@@ -189,7 +191,7 @@ export class AuthService {
 
   async loginWithGoogle(
     loginGoogleDto: LoginGoogleDto,
-  ): Promise<{ message: string; token: string }> {
+  ): Promise<{ message: string; token: string; role: string }> {
     const ticket = await this._googleClient.verifyIdToken({
       idToken: loginGoogleDto.idToken,
       audience: process.env.GOOGLE_CLIENT_ID,
@@ -228,7 +230,7 @@ export class AuthService {
 
     const token = await this._tokenService.generateToken(user._id, user.role);
 
-    return { message: 'Done', token };
+    return { message: 'Done', token, role: user.role };
   }
 
   async forgetPassword(dto: ForgetPasswordDto): Promise<{ message: string }> {
