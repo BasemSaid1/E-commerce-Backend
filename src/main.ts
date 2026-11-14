@@ -4,9 +4,12 @@ import { TransformInterceptor } from './common/interceptors/transform.intercepto
 import { ValidationPipe } from '@nestjs/common';
 import { join } from 'node:path';
 import express from 'express';
+import type { NestExpressApplication } from '@nestjs/platform-express';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, {
+    rawBody: true,
+  });
 
   app.enableCors({
     origin: [

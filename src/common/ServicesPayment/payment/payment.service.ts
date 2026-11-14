@@ -27,9 +27,27 @@ export class PaymentService {
       mode,
       discounts,
       metadata,
+      expires_at: Math.floor(Date.now() / 1000) + 60 * 60,
     });
 
     return session;
+  }
+
+  async retrieveCheckoutSession(id: string) {
+    return this.stripe.checkout.sessions.retrieve(id);
+  }
+
+  async expireCheckoutSession(id: string) {
+    return this.stripe.checkout.sessions.expire(id);
+  }
+
+  // بيتحقق من توقيع Stripe على الـ raw body قبل ما نصدّق الحدث
+  constructWebhookEvent(rawBody: Buffer, signature: string) {
+    return this.stripe.webhooks.constructEvent(
+      rawBody,
+      signature,
+      process.env.STRIPE_WEBHOOK_SECRET as string,
+    );
   }
 
   async createCoupon(data: Stripe.CouponCreateParams) {

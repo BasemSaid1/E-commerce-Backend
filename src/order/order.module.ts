@@ -9,10 +9,11 @@ import { UserModel } from '../DB/models/user.model.js';
 import { TokenService } from '../common/service/token.service.js';
 import { JwtService } from '@nestjs/jwt';
 import { PaymentService } from '../common/ServicesPayment/payment/payment.service.js';
+import { StripeWebhookController } from './stripe-webhook.controller.js';
 
 @Module({
   imports: [OrderModel, CartModel, ProductModel, CouponModel, UserModel],
-  controllers: [OrderController],
+  controllers: [OrderController, StripeWebhookController],
   providers: [OrderService, TokenService, JwtService, PaymentService],
 })
 export class OrderModule {}

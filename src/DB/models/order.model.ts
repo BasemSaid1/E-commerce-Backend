@@ -67,6 +67,9 @@ export class Order {
   intentId: string;
 
   @Prop({ type: String })
+  sessionId: string;
+
+  @Prop({ type: String })
   refundId: string;
 
   @Prop({ type: Date })
