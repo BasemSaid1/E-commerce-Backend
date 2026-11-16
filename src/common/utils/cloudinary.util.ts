@@ -23,6 +23,41 @@ function ensureConfigured() {
   configured = true;
 }
 
+// export const uploadToCloudinary = (
+//   buffer: Buffer,
+//   folder: string,
+// ): Promise<UploadApiResponse> => {
+//   ensureConfigured();
+
+//   return new Promise((resolve, reject) => {
+//     const uploadStream = cloudinary.uploader.upload_stream(
+//       {
+//         folder,
+//         resource_type: 'image',
+//         timeout: 60000,
+//         transformation: [{ width: 1600, crop: 'limit', quality: 'auto' }],
+//       },
+//       (error, result) => {
+//         if (error) {
+//           console.error(
+//             'Cloudinary FULL error object:',
+//             JSON.stringify(error, Object.getOwnPropertyNames(error), 2),
+//           );
+//           return reject(error);
+//         }
+
+//         if (!result) {
+//           return reject(new Error('Cloudinary upload failed'));
+//         }
+
+//         resolve(result);
+//       },
+//     );
+
+//     uploadStream.end(buffer);
+//   });
+// };
+
 export const uploadToCloudinary = (
   buffer: Buffer,
   folder: string,
@@ -35,14 +70,10 @@ export const uploadToCloudinary = (
         folder,
         resource_type: 'image',
         timeout: 60000,
-        transformation: [{ width: 1600, crop: 'limit', quality: 'auto' }],
       },
       (error, result) => {
         if (error) {
-          console.error(
-            'Cloudinary FULL error object:',
-            JSON.stringify(error, Object.getOwnPropertyNames(error), 2),
-          );
+          console.error('Cloudinary upload error:', error);
           return reject(error);
         }
 
