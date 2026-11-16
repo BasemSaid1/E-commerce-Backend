@@ -55,4 +55,11 @@ export class CouponController {
   ) {
     return this.couponService.update(id, updateCouponDto);
   }
+
+  @Delete(':id')
+  @UseGuards(AuthGuard, RoleGuard)
+  @Roles(RoleEnum.ADMIN)
+  remove(@Param('id') id: Types.ObjectId) {
+    return this.couponService.remove(id);
+  }
 }

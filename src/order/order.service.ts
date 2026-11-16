@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -19,6 +20,23 @@ import type { HUserDocument } from '../DB/models/user.model.js';
 import { PaymentService } from '../common/ServicesPayment/payment/payment.service.js';
 import Stripe from 'stripe';
 import { CachingService } from '../caching/caching.service.js';
+
+// الانتقالات المسموحة للأدمن
+const ADMIN_TRANSITIONS: Record<string, OrderStatusEnum[]> = {
+  [OrderStatusEnum.PENDING]: [
+    OrderStatusEnum.CONFIRMED,
+    OrderStatusEnum.CANCELLED,
+  ],
+  [OrderStatusEnum.PAID]: [
+    OrderStatusEnum.CONFIRMED,
+    OrderStatusEnum.CANCELLED,
+  ],
+  [OrderStatusEnum.CONFIRMED]: [
+    OrderStatusEnum.SHIPPED,
+    OrderStatusEnum.CANCELLED,
+  ],
+  [OrderStatusEnum.SHIPPED]: [OrderStatusEnum.DELIVERED],
+};
 
 @Injectable()
 export class OrderService {
@@ -290,6 +308,158 @@ export class OrderService {
       .populate('appliedCoupon', 'code discountPercentage')
       .sort({ createdAt: -1 })
       .lean();
+  }
+
+  // ───────────── الأدمن ─────────────
+
+  async findAllForAdmin(query: {
+    page: number;
+    limit: number;
+    status?: string;
+  }) {
+    const page =
+      Number.isInteger(query.page) && query.page > 0 ? query.page : 1;
+    const limit =
+      Number.isInteger(query.limit) && query.limit > 0
+        ? Math.min(query.limit, 50)
+        : 10;
+
+    const filter: Record<string, unknown> = {};
+    if (query.status) {
+      if (
+        !Object.values(OrderStatusEnum).includes(
+          query.status as OrderStatusEnum,
+        )
+      ) {
+        throw new BadRequestException('Invalid order status');
+      }
+      filter.status = query.status;
+    }
+
+    const [orders, total] = await Promise.all([
+      this._orderModel
+        .find(filter)
+        .select('-intentId -sessionId -refundId -__v')
+        .populate('user', 'firstName lastName email')
+        .populate('items.product', 'title image price')
+        .populate('appliedCoupon', 'code discountPercentage')
+        .sort({ createdAt: -1 })
+        .skip((page - 1) * limit)
+        .limit(limit)
+        .lean(),
+      this._orderModel.countDocuments(filter),
+    ]);
+
+    const totalPages = Math.ceil(total / limit);
+
+    return {
+      orders,
+      pagination: {
+        total,
+        page,
+        limit,
+        totalPages,
+        hasNextPage: page < totalPages,
+        hasPreviousPage: page > 1,
+      },
+    };
+  }
+
+  async updateStatusByAdmin(orderId: Types.ObjectId, status: OrderStatusEnum) {
+    this.assertValidId(orderId);
+
+    const order = await this._orderModel.findById(orderId);
+    if (!order) {
+      throw new NotFoundException('Order Not Found');
+    }
+
+    const allowed = ADMIN_TRANSITIONS[order.status] ?? [];
+    if (!allowed.includes(status)) {
+      throw new BadRequestException('Invalid status transition');
+    }
+
+    if (status === OrderStatusEnum.CANCELLED) {
+      await this.cancelByAdmin(order);
+    } else {
+      if (
+        order.status === OrderStatusEnum.PENDING &&
+        order.paymentMethod === PaymentMethodEnum.CARD
+      ) {
+        throw new BadRequestException('Card order must be paid first');
+      }
+
+      // الشرط على الحالة القديمة بيمنع سباق مع الـ webhook أو أدمن تاني
+      const updated = await this._orderModel.findOneAndUpdate(
+        { _id: order._id, status: order.status },
+        { status },
+      );
+      if (!updated) {
+        throw new ConflictException('Order status has changed, please refresh');
+      }
+    }
+
+    return this._orderModel
+      .findById(orderId)
+      .select('-intentId -sessionId -refundId -__v')
+      .populate('user', 'firstName lastName email')
+      .populate('items.product', 'title image price')
+      .populate('appliedCoupon', 'code discountPercentage')
+      .lean();
+  }
+
+  private async cancelByAdmin(order: HOrderDocument) {
+    if (order.paymentMethod === PaymentMethodEnum.CARD) {
+      // طلب بطاقة لسه ما اتدفعش: نقفل جلسة الدفع ونلغي
+      if (order.status === OrderStatusEnum.PENDING) {
+        if (order.sessionId) {
+          const session = await this.paymentService.retrieveCheckoutSession(
+            order.sessionId,
+          );
+          if (session.status === 'complete') {
+            throw new BadRequestException('This order has already been paid');
+          }
+          if (session.status === 'open') {
+            await this.paymentService.expireCheckoutSession(session.id);
+          }
+        }
+        await this.cancelPendingOrder(order._id);
+        return;
+      }
+
+      // طلب بطاقة مدفوع: استرداد
+      if (!order.intentId) {
+        throw new BadRequestException('no payment intent found for this order');
+      }
+
+      const refund = await this.paymentService.createRefund(order.intentId);
+
+      const refunded = await this._orderModel.findOneAndUpdate(
+        {
+          _id: order._id,
+          status: { $in: [OrderStatusEnum.PAID, OrderStatusEnum.CONFIRMED] },
+        },
+        {
+          status: OrderStatusEnum.CANCELLED,
+          refundId: refund.id,
+          refundedAt: new Date(),
+          $unset: { intentId: true },
+        },
+      );
+      if (refunded) {
+        await this.restoreOrderResources(refunded);
+      }
+      return;
+    }
+
+    // كاش
+    const cancelled = await this._orderModel.findOneAndUpdate(
+      { _id: order._id, status: order.status },
+      { status: OrderStatusEnum.CANCELLED },
+    );
+    if (!cancelled) {
+      throw new ConflictException('Order status has changed, please refresh');
+    }
+    await this.restoreOrderResources(cancelled);
   }
 
   async findMyOrder(orderId: Types.ObjectId, userId: Types.ObjectId) {

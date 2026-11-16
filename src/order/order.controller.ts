@@ -7,6 +7,7 @@ import {
   Req,
   UseGuards,
   Param,
+  Query,
 } from '@nestjs/common';
 import { OrderService } from './order.service.js';
 import { CreateOrderDto } from './dto/create-order.dto.js';
@@ -14,6 +15,10 @@ import type { Request } from 'express';
 import { Types } from 'mongoose';
 import { AuthGuard } from '../common/guards/auth.guard.js';
 import Stripe from 'stripe';
+import { UpdateOrderStatusDto } from './dto/update-order-status.dto.js';
+import { RoleGuard } from '../common/guards/role.guard.js';
+import { Roles } from '../common/decorators/roles.decorator.js';
+import { RoleEnum } from '../common/enums/user.enum.js';
 
 @Controller('order')
 @UseGuards(AuthGuard)
@@ -24,6 +29,31 @@ export class OrderController {
   findMyOrders(@Req() req: Request) {
     const userId = req.user?._id as unknown as Types.ObjectId;
     return this.orderService.findMyOrders(userId);
+  }
+
+  @Get('admin/list')
+  @UseGuards(RoleGuard)
+  @Roles(RoleEnum.ADMIN)
+  findAllForAdmin(
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+    @Query('status') status?: string,
+  ) {
+    return this.orderService.findAllForAdmin({
+      page: Number(page),
+      limit: Number(limit),
+      status,
+    });
+  }
+
+  @Patch('admin/:orderId/status')
+  @UseGuards(RoleGuard)
+  @Roles(RoleEnum.ADMIN)
+  updateStatusByAdmin(
+    @Param('orderId') orderId: Types.ObjectId,
+    @Body() dto: UpdateOrderStatusDto,
+  ) {
+    return this.orderService.updateStatusByAdmin(orderId, dto.status);
   }
 
   @Get(':orderId')

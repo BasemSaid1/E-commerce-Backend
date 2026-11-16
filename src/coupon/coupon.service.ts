@@ -71,15 +71,47 @@ export class CouponService {
       .lean();
   }
 
+  // async update(id: Types.ObjectId, updateCouponDto: UpdateCouponDto) {
+  //   const updatedCoupon = await this._couponModel.findByIdAndUpdate(
+  //     id,
+  //     updateCouponDto,
+  //     { returnDocument: 'after' },
+  //   );
+  //   if (!updatedCoupon) {
+  //     throw new NotFoundException('Coupon not found');
+  //   }
+  //   return updatedCoupon?.populate('createdBy', 'firstName lastName email');
+  // }
+
   async update(id: Types.ObjectId, updateCouponDto: UpdateCouponDto) {
-    const updatedCoupon = await this._couponModel.findByIdAndUpdate(
-      id,
-      updateCouponDto,
-      { returnDocument: 'after' },
-    );
+    const data: UpdateCouponDto = { ...updateCouponDto };
+
+    if (data.code) {
+      data.code = data.code.toUpperCase().trim();
+
+      const existing = await this._couponModel.exists({
+        code: data.code,
+        _id: { $ne: id },
+      });
+      if (existing) {
+        throw new ConflictException('Coupon code already exists');
+      }
+    }
+
+    const updatedCoupon = await this._couponModel.findByIdAndUpdate(id, data, {
+      returnDocument: 'after',
+    });
     if (!updatedCoupon) {
       throw new NotFoundException('Coupon not found');
     }
-    return updatedCoupon?.populate('createdBy', 'firstName lastName email');
+    return updatedCoupon.populate('createdBy', 'firstName lastName email');
+  }
+
+  async remove(id: Types.ObjectId) {
+    const deleted = await this._couponModel.findByIdAndDelete(id);
+    if (!deleted) {
+      throw new NotFoundException('Coupon not found');
+    }
+    return { deleted: true };
   }
 }
