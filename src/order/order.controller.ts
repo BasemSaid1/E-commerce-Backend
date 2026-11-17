@@ -46,6 +46,13 @@ export class OrderController {
     });
   }
 
+  @Get('admin/stats')
+  @UseGuards(RoleGuard)
+  @Roles(RoleEnum.ADMIN)
+  getAdminStats() {
+    return this.orderService.getAdminStats();
+  }
+
   @Patch('admin/:orderId/status')
   @UseGuards(RoleGuard)
   @Roles(RoleEnum.ADMIN)

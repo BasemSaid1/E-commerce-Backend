@@ -365,6 +365,56 @@ export class OrderService {
     };
   }
 
+  async getAdminStats() {
+    const [byStatus, revenueAgg, lowStock, outOfStock] = await Promise.all([
+      this._orderModel.aggregate<{ _id: string; count: number }>([
+        { $group: { _id: '$status', count: { $sum: 1 } } },
+      ]),
+      // الإيراد: بطاقة مدفوعة (ومتقدمة)، أو كاش اتسلّم
+      this._orderModel.aggregate<{ _id: null; total: number }>([
+        {
+          $match: {
+            $or: [
+              {
+                paymentMethod: PaymentMethodEnum.CARD,
+                status: {
+                  $in: [
+                    OrderStatusEnum.PAID,
+                    OrderStatusEnum.CONFIRMED,
+                    OrderStatusEnum.SHIPPED,
+                    OrderStatusEnum.DELIVERED,
+                  ],
+                },
+              },
+              {
+                paymentMethod: PaymentMethodEnum.CASH,
+                status: OrderStatusEnum.DELIVERED,
+              },
+            ],
+          },
+        },
+        { $group: { _id: null, total: { $sum: '$finalTotal' } } },
+      ]),
+      this._productModel.countDocuments({ stock: { $gt: 0, $lte: 5 } }),
+      this._productModel.countDocuments({ stock: 0 }),
+    ]);
+
+    const orders: Record<string, number> = {};
+    let totalOrders = 0;
+    for (const row of byStatus) {
+      orders[row._id] = row.count;
+      totalOrders += row.count;
+    }
+
+    return {
+      totalOrders,
+      orders,
+      revenue: revenueAgg[0]?.total ?? 0,
+      lowStock,
+      outOfStock,
+    };
+  }
+
   async updateStatusByAdmin(orderId: Types.ObjectId, status: OrderStatusEnum) {
     this.assertValidId(orderId);
 
