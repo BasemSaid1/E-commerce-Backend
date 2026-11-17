@@ -15,6 +15,10 @@ import {
   deleteImageByUrl,
   deleteImagesByUrls,
 } from '../common/utils/cloudinary.util.js';
+import {
+  ProductOptionDto,
+  ProductVariantDto,
+} from './dto/product-variant.dto.js';
 
 @Injectable()
 export class ProductService {
@@ -42,6 +46,78 @@ export class ProductService {
     }
   }
 
+  private buildVariants(
+    options: ProductOptionDto[],
+    variants: ProductVariantDto[],
+    existingIds: Set<string> = new Set(),
+  ) {
+    if (options.length === 0 && variants.length === 0) {
+      return { options: [], variants: [], price: 0, stock: 0 };
+    }
+    if (options.length === 0 || variants.length === 0) {
+      throw new BadRequestException(
+        'options and variants must be provided together',
+      );
+    }
+
+    const optionNames = new Set<string>();
+    for (const option of options) {
+      const key = option.name.toLowerCase();
+      if (optionNames.has(key)) {
+        throw new BadRequestException(`duplicate option name ${option.name}`);
+      }
+      optionNames.add(key);
+
+      const values = new Set(option.values.map((v) => v.toLowerCase()));
+      if (values.size !== option.values.length) {
+        throw new BadRequestException(
+          `duplicate values in option ${option.name}`,
+        );
+      }
+    }
+
+    const seen = new Set<string>();
+    const built = variants.map((variant) => {
+      if (variant.attributes.length !== options.length) {
+        throw new BadRequestException(
+          'variant attributes must match product options',
+        );
+      }
+
+      // بنرتّب الصفات بنفس ترتيب الخيارات، وبنتأكد إن القيمة موجودة في الخيار
+      const attributes = options.map((option) => {
+        const attr = variant.attributes.find((a) => a.name === option.name);
+        if (!attr || !option.values.includes(attr.value)) {
+          throw new BadRequestException(
+            'variant attributes must match product options',
+          );
+        }
+        return { name: option.name, value: attr.value };
+      });
+
+      const key = attributes.map((a) => `${a.name}=${a.value}`).join('|');
+      if (seen.has(key)) {
+        throw new BadRequestException('duplicate variant combination');
+      }
+      seen.add(key);
+
+      // الـ id القديم بيتحافظ عليه (علشان السلة والطلبات)، والجديد بيتولّد
+      const _id =
+        variant._id && existingIds.has(variant._id)
+          ? new Types.ObjectId(variant._id)
+          : new Types.ObjectId();
+
+      return { _id, attributes, price: variant.price, stock: variant.stock };
+    });
+
+    return {
+      options: options.map((o) => ({ name: o.name, values: o.values })),
+      variants: built,
+      price: Math.min(...built.map((v) => v.price)),
+      stock: built.reduce((sum, v) => sum + v.stock, 0),
+    };
+  }
+
   async create(
     createProductDto: CreateProductDto,
     imageUrl: string,
@@ -53,8 +129,30 @@ export class ProductService {
       createProductDto.category,
     );
 
+    // const newProduct = new this._productModel({
+    //   ...createProductDto,
+    //   image: imageUrl,
+    //   gallery: imagesUrl,
+    //   createdBy: adminId,
+    // });
+
+    const { options, variants, ...rest } = createProductDto;
+    const built = this.buildVariants(options ?? [], variants ?? []);
+    const hasVariants = built.variants.length > 0;
+
+    if (!hasVariants && rest.price === undefined) {
+      throw new BadRequestException('price is required');
+    }
+    if (!hasVariants && rest.stock === undefined) {
+      throw new BadRequestException('stock is required');
+    }
+
     const newProduct = new this._productModel({
-      ...createProductDto,
+      ...rest,
+      price: hasVariants ? built.price : rest.price,
+      stock: hasVariants ? built.stock : rest.stock,
+      options: built.options,
+      variants: built.variants,
       image: imageUrl,
       gallery: imagesUrl,
       createdBy: adminId,
@@ -210,9 +308,43 @@ export class ProductService {
       await this.validateBrandCategoryRelationship(brandId, categoryId);
     }
 
-    const updatedPayload: any = {
-      ...updateProductDto,
-    };
+    // const updatedPayload: any = {
+    //   ...updateProductDto,
+    // };
+
+    const { options, variants, ...rest } = updateProductDto;
+    const updatedPayload: any = { ...rest };
+
+    if (options !== undefined || variants !== undefined) {
+      const existingIds = new Set(
+        (currentProduct.variants ?? []).map((v) => v._id.toString()),
+      );
+      const built = this.buildVariants(
+        options ?? [],
+        variants ?? [],
+        existingIds,
+      );
+
+      updatedPayload.options = built.options;
+      updatedPayload.variants = built.variants;
+
+      if (built.variants.length > 0) {
+        updatedPayload.price = built.price;
+        updatedPayload.stock = built.stock;
+      } else if (
+        currentProduct.variants?.length > 0 &&
+        (rest.price === undefined || rest.stock === undefined)
+      ) {
+        // تحويل منتج من متغيّرات لمنتج عادي لازم له سعر ومخزون
+        throw new BadRequestException(
+          'price and stock are required when removing variants',
+        );
+      }
+    } else if (currentProduct.variants?.length > 0) {
+      // سعر ومخزون المنتج ذو المتغيّرات بيتحسبوا من المتغيّرات بس
+      delete updatedPayload.price;
+      delete updatedPayload.stock;
+    }
 
     if (imageUrl) {
       updatedPayload.image = imageUrl;

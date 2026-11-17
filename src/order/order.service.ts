@@ -74,17 +74,40 @@ export class OrderService {
         );
       }
 
-      if (dbProduct.stock < item.quantity) {
+      let unitPrice = dbProduct.price;
+      let availableStock = dbProduct.stock;
+      let variantLabel: string | undefined;
+
+      if (dbProduct.variants?.length > 0) {
+        const variant = item.variantId
+          ? dbProduct.variants.find(
+              (v) => v._id.toString() === item.variantId!.toString(),
+            )
+          : undefined;
+        if (!variant) {
+          throw new BadRequestException('selected option is not available');
+        }
+        unitPrice = variant.price;
+        availableStock = variant.stock;
+        variantLabel = variant.attributes
+          .map((a) => `${a.name}: ${a.value}`)
+          .join(' • ');
+      } else if (item.variantId) {
+        throw new BadRequestException('selected option is not available');
+      }
+
+      if (availableStock < item.quantity) {
         throw new BadRequestException(
-          `insuffecent stock. only ${dbProduct.stock} units available `,
+          `insuffecent stock. only ${availableStock} units available `,
         );
       }
 
-      calculatedSubTotal += item.quantity * dbProduct.price;
+      calculatedSubTotal += item.quantity * unitPrice;
       orderItems.push({
         product: item.product,
+        ...(item.variantId ? { variantId: item.variantId, variantLabel } : {}),
         quantity: item.quantity,
-        priceSnapShot: dbProduct.price,
+        priceSnapShot: unitPrice,
       });
     }
 
@@ -115,34 +138,30 @@ export class OrderService {
 
     // update stock
 
-    for (const item of orderItems) {
-      const updatedProducts = await this._productModel.findByIdAndUpdate(
-        item.product,
-        { $inc: { stock: -item.quantity } },
-        { returnDocument: 'after' },
-      );
+    const reserved: {
+      item: (typeof orderItems)[number];
+      product: HProductDocument;
+    }[] = [];
 
-      if (updatedProducts) {
-        if (updatedProducts.stock <= 5 && updatedProducts.stock > 0) {
-          this._socketService.emitToRoom(
-            `product:${updatedProducts._id}`,
-            'lowStockAlert',
-            {
-              productId: updatedProducts._id,
-              productName: updatedProducts.title,
-              currentStock: updatedProducts.stock,
-              message: `Running low! Only ${updatedProducts.stock} left of ${updatedProducts.title}`,
-            },
+    try {
+      for (const item of orderItems) {
+        const updated = await this.adjustStock(item, -item.quantity);
+        if (!updated) {
+          throw new BadRequestException(
+            'some items in your cart are no longer available in the requested quantity',
           );
         }
-        if (updatedProducts.stock === 0) {
-          this._socketService.emitToAll('productSoldOut', {
-            productId: updatedProducts._id,
-            productName: updatedProducts.title,
-            message: `${updatedProducts.title} is now complatley out of stock`,
-          });
-        }
+        reserved.push({ item, product: updated });
       }
+    } catch (error) {
+      for (const { item } of reserved) {
+        await this.adjustStock(item, item.quantity);
+      }
+      throw error;
+    }
+
+    for (const { item, product } of reserved) {
+      this.emitStockAlerts(product, item.variantId);
     }
 
     await this._cache.invalidateProducts();
@@ -175,124 +194,72 @@ export class OrderService {
     return Order;
   }
 
-  // async createCheckoutSession(
-  //   orderId: Types.ObjectId,
-  //   userId: Types.ObjectId,
-  // ): Promise<Stripe.Response<Stripe.Checkout.Session>> {
-  //   const order = await this._orderModel
-  //     .findOne({
-  //       _id: orderId,
-  //       user: userId,
-  //       status: OrderStatusEnum.PENDING,
-  //       paymentMethod: PaymentMethodEnum.CARD,
-  //     })
-  //     .populate([
-  //       { path: 'user' },
-  //       { path: 'items.product' },
-  //       { path: 'appliedCoupon' },
-  //     ]);
+  // بيحجز (delta سالب) أو بيرجّع (delta موجب) مخزون المنتج أو التركيبة بشكل ذري
+  private adjustStock(
+    item: {
+      product: Types.ObjectId | string;
+      variantId?: Types.ObjectId | string;
+    },
+    delta: number,
+  ) {
+    const reserving = delta < 0;
 
-  //   if (!order) {
-  //     throw new NotFoundException('Order Not Found');
-  //   }
+    if (item.variantId) {
+      return this._productModel.findOneAndUpdate(
+        {
+          _id: item.product,
+          variants: {
+            $elemMatch: {
+              _id: item.variantId,
+              ...(reserving ? { stock: { $gte: -delta } } : {}),
+            },
+          },
+        },
+        { $inc: { 'variants.$.stock': delta, stock: delta } },
+        { returnDocument: 'after' },
+      );
+    }
 
-  //   const amount = order.subTotal ?? 0;
+    return this._productModel.findOneAndUpdate(
+      { _id: item.product, ...(reserving ? { stock: { $gte: -delta } } : {}) },
+      { $inc: { stock: delta } },
+      { returnDocument: 'after' },
+    );
+  }
 
-  //   const line_items = [
-  //     {
-  //       price_data: {
-  //         currency: 'egp',
-  //         product_data: {
-  //           name: `Order ${(order.user as unknown as HUserDocument).firstName}`,
-  //           description: `payment for order on address ${order.shippingAddress}`,
-  //         },
-  //         unit_amount: Math.round(amount * 100),
-  //       },
-  //       quantity: 1,
-  //     },
-  //   ];
+  private emitStockAlerts(
+    product: HProductDocument,
+    variantId?: Types.ObjectId | string,
+  ) {
+    const variant = variantId
+      ? product.variants?.find((v) => v._id.toString() === variantId.toString())
+      : undefined;
 
-  //   const discounts: Stripe.Checkout.SessionCreateParams.Discount[] = [];
+    const currentStock = variant ? variant.stock : product.stock;
+    const name = variant
+      ? `${product.title} (${variant.attributes.map((a) => a.value).join(' / ')})`
+      : product.title;
 
-  //   if (order.discountAmount && order.discountAmount > 0) {
-  //     const coupon = await this.paymentService.createCoupon({
-  //       duration: 'once',
-  //       currency: 'egp',
-  //       amount_off: Math.round(order.discountAmount * 100),
-  //       name: (order.appliedCoupon as unknown as HCouponDocument)?.code,
-  //     });
-  //     discounts.push({ coupon: coupon.id });
-  //   }
-
-  //   const session = await this.paymentService.checkoutSession({
-  //     customer_email: (order.user as unknown as HUserDocument).email,
-  //     line_items,
-  //     mode: 'payment',
-  //     discounts,
-  //     metadata: { orderId: orderId.toString() },
-  //   });
-
-  //   const method = await this.paymentService.createPaymentMethod({
-  //     type: process.env.TYPE_METHOD,
-  //     card: { token: process.env.TOKEN_CARD_METHOD },
-  //   });
-
-  //   // const intent = await this.paymentService.createPaymentIntent({
-  //   //   amount: Math.round(order.subTotal * 100),
-  //   //   currency: 'egp',
-  //   //   payment_method: method.id,
-  //   //   payment_method_types: [PaymentMethodEnum.CARD],
-  //   // });
-
-  //   const intent = await this.paymentService.createPaymentIntent({
-  //     amount: Math.round(order.subTotal * 100),
-  //     currency: 'egp',
-  //     payment_method: method.id,
-  //     automatic_payment_methods: {
-  //       enabled: true,
-  //       allow_redirects: 'never',
-  //     },
-  //   });
-
-  //   order.intentId = intent.id;
-  //   await order.save();
-
-  //   await this.paymentService.confirmPaymentIntent(intent.id);
-
-  //   return session;
-  // }
-
-  // async refundOrder(orderId: Types.ObjectId, userId: Types.ObjectId) {
-  //   const order = await this._orderModel.findOne({
-  //     _id: orderId,
-  //     user: userId,
-  //     paymentMethod: PaymentMethodEnum.CARD,
-  //   });
-
-  //   if (!order) {
-  //     throw new NotFoundException('Order Not Found');
-  //   }
-
-  //   if (!order.intentId) {
-  //     throw new BadRequestException('no payment intent found for this order');
-  //   }
-
-  //   const refund = await this.paymentService.createRefund(order.intentId);
-
-  //   await this._orderModel.findByIdAndUpdate(
-  //     orderId,
-  //     {
-  //       status: OrderStatusEnum.CANCELLED,
-  //       refundId: refund.id,
-  //       refundedAt: new Date(),
-  //       $unset: { intentId: true },
-  //       $inc: { __v: 1 },
-  //     },
-  //     { returnDocument: 'after' },
-  //   );
-
-  //   return order;
-  // }
+    if (currentStock <= 5 && currentStock > 0) {
+      this._socketService.emitToRoom(
+        `product:${product._id}`,
+        'lowStockAlert',
+        {
+          productId: product._id,
+          productName: name,
+          currentStock,
+          message: `Running low! Only ${currentStock} left of ${name}`,
+        },
+      );
+    }
+    if (product.stock === 0) {
+      this._socketService.emitToAll('productSoldOut', {
+        productId: product._id,
+        productName: product.title,
+        message: `${product.title} is now complatley out of stock`,
+      });
+    }
+  }
 
   private assertValidId(id: Types.ObjectId | string) {
     if (!isValidObjectId(id)) {
@@ -759,10 +726,7 @@ export class OrderService {
 
   private async restoreOrderResources(order: HOrderDocument) {
     for (const item of order.items) {
-      await this._productModel.updateOne(
-        { _id: item.product },
-        { $inc: { stock: item.quantity } },
-      );
+      await this.adjustStock(item, item.quantity);
     }
 
     await this._cache.invalidateProducts();

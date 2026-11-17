@@ -12,6 +12,12 @@ export class CartItem {
   })
   product: string;
 
+  @Prop({ type: MongooseSchema.Types.ObjectId })
+  variantId?: Types.ObjectId;
+
+  @Prop({ type: String })
+  variantLabel?: string;
+
   @Prop({
     type: Number,
     required: true,

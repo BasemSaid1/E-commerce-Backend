@@ -6,6 +6,7 @@ import {
   Param,
   Patch,
   Post,
+  Query,
   Req,
   UseGuards,
 } from '@nestjs/common';
@@ -34,9 +35,13 @@ export class CartController {
   }
 
   @Delete('item/:productId')
-  async removeItem(@Req() req: Request, @Param('productId') productId: string) {
+  async removeItem(
+    @Req() req: Request,
+    @Param('productId') productId: string,
+    @Query('variantId') variantId?: string,
+  ) {
     const userId = req.user!._id as unknown as string;
-    return this.cartService.removeItem(userId, productId);
+    return this.cartService.removeItem(userId, productId, variantId);
   }
 
   @Patch('item/:productId')
@@ -44,6 +49,7 @@ export class CartController {
     @Req() req: Request,
     @Param('productId') productId: string,
     @Body() updateCartItemDto: UpdateCartItemDto,
+    @Query('variantId') variantId?: string,
   ) {
     const userId = req.user!._id as unknown as string;
 
@@ -51,6 +57,7 @@ export class CartController {
       userId,
       productId,
       updateCartItemDto,
+      variantId,
     );
   }
 }
