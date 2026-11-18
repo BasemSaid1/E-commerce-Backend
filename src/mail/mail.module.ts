@@ -16,16 +16,11 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
       inject: [ConfigService],
       useFactory: (configService: ConfigService) => ({
         transport: {
-          host: 'smtp.gmail.com',
-          port: 465,
-          secure: true,
+          service: 'gmail',
           auth: {
             user: configService.get<string>('MAIL_USER'),
             pass: configService.get<string>('MAIL_PASS'),
           },
-          connectionTimeout: 10000,
-          greetingTimeout: 10000,
-          socketTimeout: 15000,
         },
         defaults: {
           from: `"No Reply" <${configService.get<string>('MAIL_USER')}>`,

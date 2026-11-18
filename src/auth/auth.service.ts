@@ -3,7 +3,6 @@ import {
   ConflictException,
   Injectable,
   NotFoundException,
-  ServiceUnavailableException,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { HUserDocument, User } from '../DB/models/user.model.js';
@@ -59,18 +58,7 @@ export class AuthService {
 
     const savedUser = await newUser.save();
 
-    const sent = await this._mailService.sendVerificationOtp(
-      savedUser.email,
-      otp,
-    );
-
-    if (!sent) {
-      await this._userModel.deleteOne({ _id: savedUser._id });
-      throw new ServiceUnavailableException(
-        'Could not send the verification email, please try again later',
-      );
-    }
-
+    await this._mailService.sendVerificationOtp(savedUser.email, otp);
     return savedUser;
   }
 
@@ -150,12 +138,7 @@ export class AuthService {
     user.otpExpiresAt = newExpiryTime;
     await user.save();
 
-    const sent = await this._mailService.sendVerificationOtp(user.email, otp);
-    if (!sent) {
-      throw new ServiceUnavailableException(
-        'Could not send the verification email, please try again later',
-      );
-    }
+    await this._mailService.sendVerificationOtp(user.email, otp);
 
     return {
       message:
@@ -267,16 +250,11 @@ export class AuthService {
 
     if (!user) throw new NotFoundException('user not found');
 
-    const sent = await this._mailService.sendForgetPasswordOtp(
+    await this._mailService.sendForgetPasswordOtp(
       user.email,
       user.userName,
       otp,
     );
-    if (!sent) {
-      throw new ServiceUnavailableException(
-        'Could not send the verification email, please try again later',
-      );
-    }
 
     return { message: 'Check your inbox' };
   }
