@@ -29,12 +29,11 @@ import {
 } from '../common/utils/cloudinary.util.js';
 
 @Controller('brand')
-@UseGuards(AuthGuard)
 export class BrandController {
   constructor(private readonly brandService: BrandService) {}
 
   @Post()
-  @UseGuards(RoleGuard)
+  @UseGuards(AuthGuard, RoleGuard)
   @UseInterceptors(FileInterceptor('file', multerOptions))
   @Roles(RoleEnum.ADMIN)
   async create(
@@ -70,7 +69,7 @@ export class BrandController {
   }
 
   @Patch(':id')
-  @UseGuards(RoleGuard)
+  @UseGuards(AuthGuard, RoleGuard)
   @UseInterceptors(FileInterceptor('file', multerOptions))
   @Roles(RoleEnum.ADMIN)
   async update(
@@ -93,7 +92,7 @@ export class BrandController {
   }
 
   @Delete(':id')
-  @UseGuards(RoleGuard)
+  @UseGuards(AuthGuard, RoleGuard)
   @Roles(RoleEnum.ADMIN)
   remove(@Param('id') id: Types.ObjectId) {
     return this.brandService.remove(id);

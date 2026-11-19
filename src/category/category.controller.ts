@@ -29,12 +29,11 @@ import {
 } from '../common/utils/cloudinary.util.js';
 
 @Controller('category')
-@UseGuards(AuthGuard)
 export class CategoryController {
   constructor(private readonly categoryService: CategoryService) {}
 
   @Post()
-  @UseGuards(RoleGuard)
+  @UseGuards(AuthGuard, RoleGuard)
   @UseInterceptors(FileInterceptor('file', multerOptions))
   @Roles(RoleEnum.ADMIN)
   async create(
@@ -74,7 +73,7 @@ export class CategoryController {
   }
 
   @Patch(':id')
-  @UseGuards(RoleGuard)
+  @UseGuards(AuthGuard, RoleGuard)
   @Roles(RoleEnum.ADMIN)
   @UseInterceptors(FileInterceptor('file', multerOptions))
   async update(
@@ -97,7 +96,7 @@ export class CategoryController {
   }
 
   @Delete(':id')
-  @UseGuards(RoleGuard)
+  @UseGuards(AuthGuard, RoleGuard)
   @Roles(RoleEnum.ADMIN)
   remove(@Param('id') id: Types.ObjectId) {
     return this.categoryService.remove(id);
