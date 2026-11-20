@@ -127,7 +127,7 @@ export class UserService {
 
     const user = await this._userModel.findById(id).select('role profilePic');
     if (!user) {
-      throw new NotFoundException('User not found');
+      throw new NotFoundException('User account not found');
     }
 
     if (user.role === RoleEnum.ADMIN) {
