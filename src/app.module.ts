@@ -17,6 +17,7 @@ import { ReviewModule } from './review/review.module.js';
 import { CouponModule } from './coupon/coupon.module.js';
 import { CachingModule } from './caching/caching.module.js';
 import { OrderModule } from './order/order.module.js';
+import { UserModule } from './user/user.module.js';
 import { SocketModule } from './socket/socket.module.js';
 import { GraphQLModule } from '@nestjs/graphql';
 import { ApolloDriver, ApolloDriverConfig } from '@nestjs/apollo';
@@ -55,6 +56,7 @@ import type { Request } from 'express';
     CachingModule,
     OrderModule,
     SocketModule,
+    UserModule,
   ],
 
   controllers: [AppController],
