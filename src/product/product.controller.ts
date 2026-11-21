@@ -113,6 +113,11 @@ export class ProductController {
     return this.productService.findAll(query);
   }
 
+  @Get('filters')
+  getFilters() {
+    return this.productService.getFilters();
+  }
+
   @Get(':id')
   @UseInterceptors(CacheInterceptor)
   findOne(@Param('id') id: Types.ObjectId) {

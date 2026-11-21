@@ -164,6 +164,71 @@ export class ProductService {
     return saved.populate('brand category', 'name logo');
   }
 
+  async getFilters() {
+    type Group = { _id: unknown; count: number };
+
+    const [facets] = await this._productModel.aggregate<{
+      categories: Group[];
+      brands: Group[];
+      price: { min: number; max: number }[];
+    }>([
+      {
+        $facet: {
+          categories: [{ $group: { _id: '$category', count: { $sum: 1 } } }],
+          brands: [{ $group: { _id: '$brand', count: { $sum: 1 } } }],
+          price: [
+            {
+              $group: {
+                _id: null,
+                min: { $min: '$price' },
+                max: { $max: '$price' },
+              },
+            },
+          ],
+        },
+      },
+    ]);
+
+    const [categories, brands] = (await Promise.all([
+      this._productModel.populate(facets.categories, {
+        path: '_id',
+        model: 'Category',
+        select: 'name',
+      }),
+      this._productModel.populate(facets.brands, {
+        path: '_id',
+        model: Brand.name,
+        select: 'name',
+      }),
+    ])) as unknown as {
+      _id: { _id: unknown; name: string } | null;
+      count: number;
+    }[][];
+
+    const clean = (
+      rows: { _id: { _id: unknown; name: string } | null; count: number }[],
+    ) =>
+      rows
+        .filter((row) => row._id?.name)
+        .map((row) => ({
+          _id: String(row._id!._id),
+          name: row._id!.name,
+          count: row.count,
+        }))
+        .sort(
+          (a, b) => b.count - a.count || a.name.localeCompare(b.name, 'ar'),
+        );
+
+    return {
+      categories: clean(categories),
+      brands: clean(brands),
+      price: {
+        min: facets.price[0]?.min ?? 0,
+        max: facets.price[0]?.max ?? 0,
+      },
+    };
+  }
+
   async findAll(query: ProductQueryDto) {
     const {
       search,
